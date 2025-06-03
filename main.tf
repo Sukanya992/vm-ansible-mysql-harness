@@ -1,42 +1,65 @@
 provider "google" {
-  project = "plated-epigram-452709-h6"        # ← your GCP project ID
-  region  = "us-west1"          # optional, for regional resources
-  zone    = "us-west1-a"        # for zonal resources like compute instances
+  project = var.project_id
+  region  = var.region
+  zone    = var.zone
 }
 
-
-
-resource "tls_private_key" "my_ssh_key" {
-  algorithm = "RSA"
-  rsa_bits  = 4096
+resource "google_compute_network" "example" {
+  name                    = "example-vpc"
+  auto_create_subnetworks = false
 }
 
-resource "google_compute_instance" "instance" {
-  name         = "ansible-mysql"
-  machine_type = "e2-standard-2"
-  zone = "us-west1-a"
+resource "google_compute_subnetwork" "example" {
+  name          = "example-subnet"
+  ip_cidr_range = "10.0.1.0/24"
+  region        = var.region
+  network       = google_compute_network.example.id
+}
+
+resource "google_compute_firewall" "example" {
+  name    = "example-firewall"
+  network = google_compute_network.example.name
+
+  allow {
+    protocol = "tcp"
+    ports    = ["22", "80", "443"]
+  }
+
+  source_ranges = ["0.0.0.0/0"]
+}
+
+resource "google_compute_instance" "example" {
+  name         = "example-instance"
+  machine_type = "e2-micro"
+  zone         = var.zone
 
   boot_disk {
     initialize_params {
-      image = "centos-stream-9"
+      image = "debian-cloud/debian-12"
     }
   }
 
   network_interface {
-    network = "default"
-    access_config {}
+    network    = google_compute_network.example.id
+    subnetwork = google_compute_subnetwork.example.id
+    access_config {} # Enables external IP (like public DNS/IP)
   }
 
-  metadata = {
-    ssh-keys = "ansible:${tls_private_key.my_ssh_key.public_key_openssh}"
-  }
+  tags = ["example"]
 }
 
-output "private_key" {
-  value     = tls_private_key.my_ssh_key.private_key_pem
-  sensitive = true
+output "hostname" {
+  value = google_compute_instance.example.network_interface[0].access_config[0].nat_ip
 }
-output "vm_external_ip" {
-   
-  value = google_compute_instance.instance.network_interface[0].access_config[0].nat_ip
+
+output "privateIp" {
+  value = google_compute_instance.example.network_interface[0].network_ip
+}
+
+output "subnetId" {
+  value = google_compute_subnetwork.example.id
+}
+
+output "region" {
+  value = var.region
 }
